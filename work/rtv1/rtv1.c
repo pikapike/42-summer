@@ -19,27 +19,42 @@ int cam_dist = 1500; // Cam pos: (0, 0, -cam_dist)
 // Color at the end
 // I should probably make structs
 
+/*
+ ^
+ |
+ |
+ |  negative y
+ |
+ |
+ *---------> positive x
+ |
+ |
+ |
+ |  positive y
+ |
+*/
+
 void init_shapes() {
-    num_shapes = 1;
+    num_shapes = 4;
     shapes = (double **) malloc(sizeof(double *) * num_shapes);
-    light = (double *) malloc(sizeof(double) * 3); // light does not work
-    light[0] = 0, light[1] = 200, light[2] = 500;
+    light = (double *) malloc(sizeof(double) * 3);
+    light[0] = 200, light[1] = -200, light[2] = 300;
     double *sphere = malloc(sizeof(double) * 6);
-    sphere[0] = 0; sphere[1] = 0; sphere[2] = 300;
-    sphere[3] = 0; sphere[4] = 200; sphere[5] = 0x00FF0000;
+    sphere[0] = 0; sphere[1] = 0; sphere[2] = 0;
+    sphere[3] = 500; sphere[4] = 200; sphere[5] = 0x00FF0000;
     shapes[0] = sphere;
-    /* double *plane = malloc(sizeof(double) * 6);
+    double *plane = malloc(sizeof(double) * 6);
     plane[0] = 2; plane[1] = 1; plane[2] = 0;
     plane[3] = 0; plane[4] = -450; plane[5] = 0x00000FF;
     shapes[1] = plane;
     double *plane2 = malloc(sizeof(double) * 6);
     plane2[0] = 2; plane2[1] = 0; plane2[2] = 1;
-    plane2[3] = 0; plane2[4] = 350; plane2[5] = 0x00FFFF00;
+    plane2[3] = 0; plane2[4] = 170; plane2[5] = 0x00FFFF00;
     shapes[2] = plane2;
     double *plane3 = malloc(sizeof(double) * 6);
     plane3[0] = 2; plane3[1] = 1; plane3[2] = 0;
-    plane3[3] = 1; plane3[4] = 1000; plane3[5] = 0x00FF00FF;
-    shapes[3] = plane3; */
+    plane3[3] = 0; plane3[4] = 1000; plane3[5] = 0x00FF00FF;
+    shapes[3] = plane3;
     return;
 }
 
@@ -53,24 +68,23 @@ double *intersection(int x, int y, int i) { // include light level as well as co
         depth = cam_dist*(-shapes[i][1]*x-shapes[i][2]*y+shapes[i][4])/(shapes[i][1]*x+shapes[i][2]*y+shapes[i][3]*cam_dist);
     }
     if (shapes[i][0] == 0) {
-        double a = x-shapes[i][1];
-        double b = y-shapes[i][2];
+        double a = shapes[i][1]-x;
+        double b = shapes[i][2]-y;
         double c = shapes[i][3];
         double d = x;
         double e = y;
         double f = cam_dist;
         double r = shapes[i][4];
         double denom = d*d+e*e+f*f;
-        if (denom < 0) return NULL;
         if (denom == 0) {
             if (a*d+b*e-c*f == 0) return NULL;
-            depth = f*(a*a+b*b+c*c-r*r)/(2*(a*d+b*e-c*f));
+            depth = f*(a*a+b*b+c*c-r*r)/(2*(a*d+b*e+c*f));
         } else {
-            double helpful = a*d*f+b*e*f-c*f*f;
-            double det = pow(helpful*f*2, 2) - 4*denom*(a*a*f*f+b*b*f*f+c*c*f*f-f*f*r*r);
-            depth = (-0.5*sqrt(det)-helpful)/denom;
+            double helpful = a*d+b*e+c*f;
+            double det = f*f*(pow(helpful, 2) - denom*(a*a+b*b+c*c-r*r));
+            if (det < 0) return NULL;
+            depth = (-sqrt(det)+helpful*f)/denom;
         }
-        printf("%f\n", depth);
     }
     ans[0] = (depth+cam_dist)*x/cam_dist; ans[1] = (depth+cam_dist)*y/cam_dist, ans[2] = depth;
     ans[3] = light_level(ans[0], ans[1], ans[2], i);
@@ -88,7 +102,16 @@ double light_level(double x, double y, double z, int i) {
         double dist_from_plane = fabs(shapes[i][1]*light[0]+shapes[i][2]*light[1]+shapes[i][3]*light[2]-shapes[i][4])/sqrt(pow(shapes[i][1], 2)+pow(shapes[i][2], 2)+pow(shapes[i][3], 2));
         double dist_from_inter = sqrt(pow(x - light[0], 2) + pow(y - light[1], 2) + pow(z - light[2], 2));
         lev_light_unscaled = dist_from_plane/dist_from_inter < 1 ? dist_from_plane/dist_from_inter : 1;
-    } else if (shapes[i][0] == 0) return rgb;
+    } else if (shapes[i][0] == 0) {
+        double dist_from_center = sqrt(pow(shapes[i][1]-light[0], 2) + pow(shapes[i][2]-light[1], 2) + pow(shapes[i][3]-light[2], 2));
+        //double rat = (dist_from_center-shapes[i][4])/dist_from_center;
+        //double dist_from_opt = sqrt(pow(x-(shapes[i][1]-light[0])*rat+light[0], 2)+pow(y-(shapes[i][2]-light[1])*rat+light[1], 2)+pow(z-(shapes[i][3]-light[2])*rat+light[2], 2));
+        double dist_from_inter = sqrt(pow(x - light[0], 2) + pow(y - light[1], 2) + pow(z - light[2], 2));
+        double cos_180_a = (dist_from_inter*dist_from_inter+shapes[i][4]*shapes[i][4]-dist_from_center*dist_from_center)/(2*shapes[i][4]*dist_from_inter);
+        //double cos_a = dist_from_opt/2/shapes[i][4];
+        lev_light_unscaled = -cos_180_a;
+        //printf("%f %f %f %f %f %f %f %f \n", x, y, z, dist_from_center, rat, dist_from_opt, cos_a, lev_light_unscaled);
+    }
     double lev_light = asin(lev_light_unscaled)/3.14159266*2;
     // if (x == 0) printf("%f %f %f %i %i %i\n", x - light[0], y - light[1], z - light[2], light[0], light[1], light[2]);
     int b = rgb % 256, g = rgb / 256 % 256, r = rgb / 256 / 256 % 256;
@@ -100,6 +123,12 @@ double light_level(double x, double y, double z, int i) {
 // We're solving for z; x = (z+cam_dist)*p_x/cam_dist, y = (z+cam_dist)*p_y/cam_dist
 // Sphere equation: ((z+f)*d/f-a)^2+((z+f)*e/f-b)^2+(z-c)^2=r^2
 // (d/f*z+(d-a))^2+(e/f*z+(e-b))^2+(z-c)^2=r^2
+// z_c z ?                  0              light_z
+//  *--*-*------------------*------------------*
+//  |----|-------------------------------------|
+//    a                     b
+// rat = b/(a+b) = (?-light_z)/(z_c-light_z) -> ?-light_z = rat*(z_c-light_z) -> ? = rat*(z_c-light_z)+light_z
+// a+b = z_c+cam_dist
 
 int eval_pixel(int x, int y) { // Note: assumed that all light reflected goes into POV
     double *closest_coords = NULL;
